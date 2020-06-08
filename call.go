@@ -64,8 +64,9 @@ func (r *Call) AddPeer(ctx context.Context, rmID RoomID, uid UserID) (*Connectio
 	channel := make(chan *Interaction)
 	connection := NewConnection(channel)
 	uuu := string(uid)
+	puuu := fmt.Sprintf("\"%s\"", uuu)
 
-	r.notifier.Notify(ctx, rmID, []UserID{uid}, &Interaction{NewPeer: &uuu})
+	r.notifier.Notify(ctx, rmID, []UserID{uid}, &Interaction{NewPeer: &puuu})
 	if err := r.notifier.Add(ctx, rmID, uid, connection); err != nil {
 		// Cleanup.
 		r.notifier.Remove(ctx, rmID, uid, connection)
@@ -76,7 +77,6 @@ func (r *Call) AddPeer(ctx context.Context, rmID RoomID, uid UserID) (*Connectio
 		<-ctx.Done()
 		log.Printf("disconnecting peer %s from the room %s", uid, rmID)
 		r.notifier.Remove(ctx, rmID, uid, connection)
-		puuu := fmt.Sprintf("\"%s\"", uuu)
 		r.notifier.Notify(ctx, rmID, []UserID{uid}, &Interaction{Disconnected: &puuu})
 	}()
 
