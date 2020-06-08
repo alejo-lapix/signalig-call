@@ -2,6 +2,7 @@ package call
 
 import (
 	"context"
+	"fmt"
 	"log"
 )
 
@@ -75,7 +76,8 @@ func (r *Call) AddPeer(ctx context.Context, rmID RoomID, uid UserID) (*Connectio
 		<-ctx.Done()
 		log.Printf("disconnecting peer %s from the room %s", uid, rmID)
 		r.notifier.Remove(ctx, rmID, uid, connection)
-		r.notifier.Notify(ctx, rmID, []UserID{uid}, &Interaction{Disconnected: &uuu})
+		puuu := fmt.Sprintf("\"%s\"", uuu)
+		r.notifier.Notify(ctx, rmID, []UserID{uid}, &Interaction{Disconnected: &puuu})
 	}()
 
 	return connection, nil
@@ -105,7 +107,7 @@ func (r *Call) Finish(ctx context.Context, rmID RoomID, uid UserID) (*Room, erro
 		}
 	}
 
-	uuu := string(rmID)
+	uuu := fmt.Sprintf("\"%s\"", rmID)
 	err := r.notifier.Notify(ctx, rmID, []UserID{uid}, &Interaction{
 		Finished: &uuu,
 	})
