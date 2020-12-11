@@ -7,9 +7,13 @@ import (
 	"sync"
 )
 
+// UserID represents the user identifier.
 type UserID string
+
+// RoomID represents the room identifier.
 type RoomID string
 
+// Notifier handles the channel communication.
 type Notifier interface {
 	// Add append an item to the subscriptions list.
 	Add(context.Context, RoomID, UserID, *Connection) error
@@ -20,6 +24,7 @@ type Notifier interface {
 	Remove(context.Context, RoomID, UserID, *Connection) error
 }
 
+// RoomHandler handles a room state.
 type RoomHandler interface {
 	// Add append an item to the subscriptions list.
 	Add(context.Context, UserID, *Connection) error
@@ -32,12 +37,15 @@ type RoomHandler interface {
 	Users(context.Context) (int, error)
 }
 
+// Connection holds the channel and peer info.
 type Connection struct {
 	ID      string
 	Channel chan *Interaction
 }
 
+// Interaction is sent to the other peer messages.
 type Interaction struct {
+	Joined          *string `json:"joined"`
 	NewPeer         *string `json:"newPeer"`
 	NewOffer        *string `json:"newOffer"`
 	NewAnswer       *string `json:"newAnswer"`
@@ -46,6 +54,7 @@ type Interaction struct {
 	Disconnected    *string `json:"disconnected"`
 }
 
+// NewConnection is the connection constructor.
 func NewConnection(channel chan *Interaction) *Connection {
 	return &Connection{
 		ID:      uuid.New().String(),
@@ -53,43 +62,49 @@ func NewConnection(channel chan *Interaction) *Connection {
 	}
 }
 
-var _ Notifier = &Center{}
+var _ Notifier = &center{}
 
-type Center struct {
+type center struct {
 	rooms map[RoomID]*Room
 	mx    sync.Mutex
 }
 
-func NewCenter() *Center {
-	return &Center{
+// NewCenter is the center constructor.
+func NewCenter() Notifier {
+	return &center{
 		rooms: map[RoomID]*Room{},
 	}
 }
 
+// Room represents the call.
 type Room struct {
 	id    RoomID
 	mx    sync.Mutex
 	users map[UserID]map[string]*Connection
 }
 
+// Peer represents the call participants.
 type Peer struct {
 	ID string
 }
 
+// ID holds the room identifier.
 func (r *Room) ID() string {
 	return string(r.id)
 }
 
+// Peers holds the room peers.
 func (r *Room) Peers() []*Peer {
 	r.mx.Lock()
 	defer r.mx.Unlock()
 	ids := make([]*Peer, len(r.users))
-	for userID, _ := range r.users {
+	for userID := range r.users {
 		ids[len(ids)] = &Peer{ID: string(userID)}
 	}
 	return ids
 }
 
+// NewRoom is the room constructor.
 func NewRoom(id RoomID) *Room {
 	return &Room{
 		id:    id,
@@ -98,7 +113,7 @@ func NewRoom(id RoomID) *Room {
 }
 
 // Add append an item to the subscriptions list.
-func (r *Center) Add(ctx context.Context, rmID RoomID, uid UserID, connection *Connection) error {
+func (r *center) Add(ctx context.Context, rmID RoomID, uid UserID, connection *Connection) error {
 	r.mx.Lock()
 	defer r.mx.Unlock()
 
@@ -122,7 +137,7 @@ func (r *Center) Add(ctx context.Context, rmID RoomID, uid UserID, connection *C
 
 // Notify the subscription rooms about a new event but removes
 // the give excluded IDS from the list.
-func (r *Center) Notify(ctx context.Context, rmID RoomID, exclude []UserID, msg *Interaction) error {
+func (r *center) Notify(ctx context.Context, rmID RoomID, exclude []UserID, msg *Interaction) error {
 	r.mx.Lock()
 	defer r.mx.Unlock()
 
@@ -136,7 +151,7 @@ func (r *Center) Notify(ctx context.Context, rmID RoomID, exclude []UserID, msg 
 }
 
 // Remove removes an user from the given list.
-func (r *Center) Remove(ctx context.Context, rmID RoomID, uid UserID, connection *Connection) error {
+func (r *center) Remove(ctx context.Context, rmID RoomID, uid UserID, connection *Connection) error {
 	r.mx.Lock()
 	defer r.mx.Unlock()
 
@@ -166,7 +181,7 @@ func (r *Center) Remove(ctx context.Context, rmID RoomID, uid UserID, connection
 	return nil
 }
 
-func (r *Center) Room(ctx context.Context, rmID RoomID) (*Room, error) {
+func (r *center) Room(ctx context.Context, rmID RoomID) (*Room, error) {
 	r.mx.Lock()
 	defer r.mx.Unlock()
 
@@ -252,6 +267,7 @@ func (r *Room) Remove(ctx context.Context, uid UserID, connection *Connection) e
 	return nil
 }
 
+// Users tells the total number of peers in the room.
 func (r *Room) Users(ctx context.Context) (int, error) {
 	return len(r.users), nil
 }

@@ -6,6 +6,7 @@ import (
 	"log"
 )
 
+// Manager handles the rooms.
 type Manager interface {
 	// Add append an item to the subscriptions list.
 	AddPeer(context.Context, RoomID, UserID) (*Connection, error)
@@ -16,45 +17,55 @@ type Manager interface {
 	Finish(context.Context, RoomID, UserID) (*Room, error)
 }
 
+// CheckAccess function called before any event.
 type CheckAccess func(context.Context, RoomID, UserID) error
 
-type Call struct {
+// Event represent the
+type Event func(context.Context, RoomID, UserID) error
+
+type callManager struct {
 	notifier     Notifier
 	CheckNew     CheckAccess
 	CheckMessage CheckAccess
 	CheckFinish  CheckAccess
+	AfterFinish  Event
 }
 
-type Option func(notifier *Call)
+// Option change the callManager default functionality.
+type Option func(notifier *callManager)
 
+// CheckNew is called to check if the room could be created.
 func CheckNew(access CheckAccess) Option {
-	return func(call *Call) {
+	return func(call *callManager) {
 		call.CheckNew = access
 	}
 }
 
+// CheckMessage checks if the user can send messages to the room.
 func CheckMessage(access CheckAccess) Option {
-	return func(call *Call) {
+	return func(call *callManager) {
 		call.CheckMessage = access
 	}
 }
 
+// CheckFinish check if the user can finish the room.
 func CheckFinish(access CheckAccess) Option {
-	return func(call *Call) {
+	return func(call *callManager) {
 		call.CheckFinish = access
 	}
 }
 
-func NewCall(notifier Notifier, ops ...Option) *Call {
-	call := &Call{notifier: notifier}
+// NewManager is the manager constructor.
+func NewManager(notifier Notifier, ops ...Option) Manager {
+	call := &callManager{notifier: notifier}
 	for _, op := range ops {
 		op(call)
 	}
 	return call
 }
 
-// Add append an item to the subscriptions list.
-func (r *Call) AddPeer(ctx context.Context, rmID RoomID, uid UserID) (*Connection, error) {
+// AddPeer append an item to the subscriptions list.
+func (r *callManager) AddPeer(ctx context.Context, rmID RoomID, uid UserID) (*Connection, error) {
 	if r.CheckNew != nil {
 		if err := r.CheckNew(ctx, rmID, uid); err != nil {
 			return nil, err
@@ -66,18 +77,18 @@ func (r *Call) AddPeer(ctx context.Context, rmID RoomID, uid UserID) (*Connectio
 	uuu := string(uid)
 	puuu := fmt.Sprintf("\"%s\"", uuu)
 
-	r.notifier.Notify(ctx, rmID, []UserID{uid}, &Interaction{NewPeer: &puuu})
+	_ = r.notifier.Notify(ctx, rmID, []UserID{uid}, &Interaction{NewPeer: &puuu})
 	if err := r.notifier.Add(ctx, rmID, uid, connection); err != nil {
 		// Cleanup.
-		r.notifier.Remove(ctx, rmID, uid, connection)
+		_ = r.notifier.Remove(ctx, rmID, uid, connection)
 		return nil, err
 	}
 
 	go func() {
 		<-ctx.Done()
 		log.Printf("disconnecting peer %s from the room %s", uid, rmID)
-		r.notifier.Remove(ctx, rmID, uid, connection)
-		r.notifier.Notify(ctx, rmID, []UserID{uid}, &Interaction{Disconnected: &puuu})
+		_ = r.notifier.Remove(ctx, rmID, uid, connection)
+		_ = r.notifier.Notify(ctx, rmID, []UserID{uid}, &Interaction{Disconnected: &puuu})
 	}()
 
 	return connection, nil
@@ -85,7 +96,7 @@ func (r *Call) AddPeer(ctx context.Context, rmID RoomID, uid UserID) (*Connectio
 
 // Notify the subscription rooms about a new event but removes
 // the give excluded IDS from the list.
-func (r *Call) SendMessage(ctx context.Context, rmID RoomID, sender UserID, msg *Interaction) (*Room, error) {
+func (r *callManager) SendMessage(ctx context.Context, rmID RoomID, sender UserID, msg *Interaction) (*Room, error) {
 	if r.CheckMessage != nil {
 		if err := r.CheckMessage(ctx, rmID, sender); err != nil {
 			return nil, err
@@ -100,7 +111,7 @@ func (r *Call) SendMessage(ctx context.Context, rmID RoomID, sender UserID, msg 
 }
 
 // Remove removes an user from the given list.
-func (r *Call) Finish(ctx context.Context, rmID RoomID, uid UserID) (*Room, error) {
+func (r *callManager) Finish(ctx context.Context, rmID RoomID, uid UserID) (*Room, error) {
 	if r.CheckFinish != nil {
 		if err := r.CheckFinish(ctx, rmID, uid); err != nil {
 			return nil, err
